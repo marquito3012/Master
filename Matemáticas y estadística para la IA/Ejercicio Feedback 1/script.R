@@ -71,11 +71,32 @@ list(numericas = num_vars, categoricas = cat_vars)
 # Perfilado general rápido
 skim(datos)
 
-##### Distribuciones
-
-
+##### Mapeo de Valores a numéricos
+calidad_map <- c("Ex" = 5, "Gd" = 4, "TA" = 3, "Fa" = 2, "Po" = 1, "NA" = 0)
+acabado_map <- c("Fin" = 3, "RFn" = 2, "Unf" = 1, "NA" = 0)
+exposicion_map <- c("Gd" = 4, "Av" = 3, "Mn" = 2, "No" = 1, "NA" = 0)
+datos_procesados <- datos %>%
+  mutate(
+    # Variables con escala estándar (Estas estaban bien)
+    ExterQual   = as.numeric(recode(ExterQual, !!!calidad_map, .default = 0)),
+    HeatingQC   = as.numeric(recode(HeatingQC, !!!calidad_map, .default = 0)),
+    KitchenQual = as.numeric(recode(KitchenQual, !!!calidad_map, .default = 0)),
+    BsmtQual    = as.numeric(recode(BsmtQual, !!!calidad_map, .default = 0)),
+    FireplaceQu = as.numeric(recode(FireplaceQu, !!!calidad_map, .default = 0)),
+    
+    # Variables con escalas propias (CORREGIDO)
+    GarageFinish = as.numeric(recode(GarageFinish, !!!acabado_map, .default = 0)),
+    BsmtExposure = as.numeric(recode(BsmtExposure, !!!exposicion_map, .default = 0)),
+    
+    # Binarias (Estaban bien) [cite: 217, 238]
+    CentralAir  = ifelse(CentralAir == "Y", 1, 0),
+    Street      = ifelse(Street == "Pave", 1, 0)
+  )
 
 ##### Matriz de correlacción
-num_vars <- datos %>% select(where(is.numeric)) # Selecciona solo las variables numéricas
+num_vars <- datos_procesados %>% select(where(is.numeric))
 mat_cor <- cor(num_vars, use = "complete.obs") # Calcula matriz de correlación
 corrplot(mat_cor, method = "color", type = "full", tl.cex = 0.8) # Diagrama visual
+
+str(datos_procesados)
+

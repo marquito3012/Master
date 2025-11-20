@@ -1,5 +1,10 @@
 library(AER)
 library(readr)
+library(tidyverse)
+library(skimr)
+library(GGally)
+library(ggplot2)
+library(corrplot)
 
 # Cargamos los datos
 datos <- read_csv("/home/marco/Master/Matemáticas y estadística para la IA/Ejercicio Feedback 1/train.csv", na = c("N/A", "", "NaN"))
@@ -9,15 +14,6 @@ dim(datos)
 
 # Mostramos las primeras 6 entradas de los datos
 head(datos)
-
-###### Análisis exploratorio de la variable objetivo SalePrice
-attach(datos)
-
-# Hacemos un histograma
-hist(SalePrice, freq=FALSE)
-
-# Mostramos un summary
-summary(SalePrice)
 
 ###### Identificación de valores nulos
 # Comprobación de datos nulos
@@ -40,7 +36,6 @@ datos$LotFrontage[datos$LotFrontage == "NA"] <- NA
 moda <- names(sort(table(datos$LotFrontage), decreasing = TRUE))[1]
 datos$LotFrontage[is.na(datos$LotFrontage)] <- moda
 datos$LotFrontage <- as.numeric(datos$LotFrontage)
-hist(datos$LotFrontage)
 
 # Al ser MasVnrType datos numéricos, asignamos la moda a los valores "NA"
 datos$MasVnrType[datos$MasVnrType == "NA"] <- NA
@@ -72,3 +67,15 @@ summary(datos)
 num_vars <- datos %>% select(where(is.numeric)) %>% names()
 cat_vars <- datos %>% select(where(~!is.numeric(.))) %>% names()
 list(numericas = num_vars, categoricas = cat_vars)
+
+# Perfilado general rápido
+skim(datos)
+
+##### Distribuciones
+
+
+
+##### Matriz de correlacción
+num_vars <- datos %>% select(where(is.numeric)) # Selecciona solo las variables numéricas
+mat_cor <- cor(num_vars, use = "complete.obs") # Calcula matriz de correlación
+corrplot(mat_cor, method = "color", type = "full", tl.cex = 0.8) # Diagrama visual

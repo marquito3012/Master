@@ -2,7 +2,7 @@
 # 0) Cargando dados
 # =========================
 library(readxl)
-base_datos <- read_excel("C:/Users/34622/Desktop/Master Uax/SM142001_Matemáticas y Estadística para la IA/Codigos_2025_2026/charactersStats.xls")
+base_datos <- read_excel("/home/marco/Master/Matemáticas y estadística para la IA/UD1/charactersStats.xls")
 View(base_datos)
 
 # =========================

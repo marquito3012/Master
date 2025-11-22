@@ -58,20 +58,11 @@ colSums(is.na(df_clean))[colSums(is.na(df_clean)) > 0]
 
 # Análisis de SalePrice
 # 1. Histograma y curva de densidad
-p1 <- ggplot(df_clean, aes(x = SalePrice)) +
+ggplot(df_clean, aes(x = SalePrice)) +
   geom_histogram(aes(y = ..density..), bins = 30, fill = "steelblue", alpha = 0.7) +
   geom_density(color = "red", linewidth = 1) +
   labs(title = "Distribución Original de SalePrice", x = "Precio ($)", y = "Densidad") +
   theme_minimal()
-
-# 2. QQ-Plot para verificar normalidad visualmente
-p2 <- ggplot(df_clean, aes(sample = SalePrice)) +
-  stat_qq() + stat_qq_line(color = "red") +
-  labs(title = "Q-Q Plot (Original)") +
-  theme_minimal()
-
-# Visualización conjunta
-grid.arrange(p1, p2, ncol = 2)
 
 # Calcular Skewness (Asimetría)
 cat("Asimetría original:", skewness(df_clean$SalePrice), "\n")

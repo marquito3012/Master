@@ -148,14 +148,14 @@ vars_to_check <- c("ExterQual", "ExterCond", "BsmtQual", "BsmtCond",
                    "GarageCond", "PoolQC", "BsmtFinType1", "BsmtFinType2", "Functional")
 df_subset <- df_clean[, c(vars_to_check, "SalePrice_Log")]
 cor_matrix <- cor(df_subset, use = "complete.obs")
-high_cor_cols <- names(which(abs(cor_matrix[,"SalePrice_Log"]) > 0.5))
-high_cor_cols <- high_cor_cols[-5]
-high_cor_cols
+high_cor_cols_ord <- names(which(abs(cor_matrix[,"SalePrice_Log"]) > 0.5))
+high_cor_cols_ord <- high_cor_cols_ord[-5]
+high_cor_cols_ord
 
 # Creamos una lista de gráficos (Boxplots)
 plot_list <- list()
 
-for(var in high_cor_cols){
+for(var in high_cor_cols_ord){
   # Corrección:
   # 1. Usamos .data[[var]] para leer la columna cuyo nombre está en la variable 'var'
   # 2. Quitamos las comillas de SalePrice_Log para que lea la columna numérica
@@ -168,14 +168,73 @@ for(var in high_cor_cols){
   plot_list[[var]] <- p
 }
 
+grid.arrange(grobs = plot_list, ncol = 2)
+
 #######################################################################################################################################################################
-# División de datos
+# División de datos y preparación para el modelo
 #######################################################################################################################################################################
+
+df_model <- df_clean %>% 
+  select(SalePrice_Log, OverallQual, ExterQual, KitchenQual, YearBuilt, BsmtQual, FullBath, GrLivArea, FireplaceQu, GarageCars, TotalBsmtSF)
+
+dim(df_model)
+
+set.seed(123)
+
+# 1. Crear índice para separar Train (60%) del resto (40%)
+# Usamos SalePrice_Log para estratificar
+trainIndex <- createDataPartition(df_model$SalePrice_Log, p = 0.6, list = FALSE)
+
+# Conjunto de Entrenamiento
+train_data <- df_model[trainIndex, ]
+
+# Datos restantes (para dividir luego en Val y Test)
+temp_data <- df_model[-trainIndex, ]
+
+# 2. Dividir los datos restantes (40%) en dos partes iguales (50% y 50%)
+# Esto nos dará 20% del total original para Validación y 20% para Test
+valIndex <- createDataPartition(temp_data$SalePrice_Log, p = 0.5, list = FALSE)
+
+# Conjunto de Validación
+val_data <- temp_data[valIndex, ]
+
+# Conjunto de Test
+test_data <- temp_data[-valIndex, ]
+
+# Verificación de dimensiones para asegurar que los % son correctos
+cat("Dimensiones Train:", dim(train_data), "\n")
+cat("Dimensiones Validation:", dim(val_data), "\n")
+cat("Dimensiones Test:", dim(test_data), "\n")
 
 #######################################################################################################################################################################
 # Estandarización normalización
 #######################################################################################################################################################################
 
+# Identificamos las variables predictoras (todas menos el target SalePrice_Log)
+predictors <- names(df_model)[names(df_model) != "SalePrice_Log"]
+
+# 1. "Entrenamos" el escalador SOLO con los datos de TRAIN
+# method = c("center", "scale") resta la media y divide por la desviación típica
+scaler <- preProcess(train_data[, predictors], method = c("center", "scale"))
+
+# 2. Aplicamos la transformación a los tres conjuntos
+# Usamos el objeto 'scaler' creado con train para transformar val y test
+train_x_scaled <- predict(scaler, train_data[, predictors])
+val_x_scaled <- predict(scaler, val_data[, predictors])
+test_x_scaled <- predict(scaler, test_data[, predictors])
+
+# 3. Reconstruimos los dataframes finales uniendo las X escaladas con la Y original
+train_data <- cbind(train_x_scaled, SalePrice_Log = train_data$SalePrice_Log)
+validation_data <- cbind(val_x_scaled, SalePrice_Log = val_data$SalePrice_Log)
+test_data <- cbind(test_x_scaled, SalePrice_Log = test_data$SalePrice_Log)
+
+# Verificación: Las medias de train deben ser 0 (o muy cercanas a 0)
+# Las medias de val/test NO serán exactamente 0, y eso es correcto.
+colMeans(train_data[, predictors])
+colMeans(val_data[, predictors])
+colMeans(test_data[, predictors])
+
 #######################################################################################################################################################################
 # PCA
 #######################################################################################################################################################################
+

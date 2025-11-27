@@ -1,9 +1,10 @@
-# Instalar librerías si no las tienes
-if(!require(tidyverse)) install.packages("tidyverse") # Manipulación y gráficos
-if(!require(corrplot)) install.packages("corrplot")   # Matriz de correlaciones
-if(!require(caret)) install.packages("caret")         # Machine Learning workflow
-if(!require(moments)) install.packages("moments")     # Para calcular skewness (asimetría)
-if(!require(gridExtra)) install.packages("gridExtra") # Organizar gráficos
+# Instalar librerías si no están instaladas
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(corrplot)) install.packages("corrplot")
+if(!require(caret)) install.packages("caret")
+if(!require(moments)) install.packages("moments")
+if(!require(gridExtra)) install.packages("gridExtra")
+if(!require(ggplot2)) install.packages("ggplot2")
 
 # Cargar librerías
 library(tidyverse)
@@ -11,72 +12,39 @@ library(corrplot)
 library(caret)
 library(moments)
 library(gridExtra)
+library(ggplot2)
 
-# Cargar datos (asumiendo que tienes train.csv en tu directorio de trabajo)
+# Cargar datos
 df <- read.csv("/home/marco/Master/Matemáticas y estadística para la IA/Ejercicio Feedback 1/train.csv", stringsAsFactors = FALSE)
 
-# Verificación inicial
+# Vemos las dimensiones
 dim(df)
-glimpse(df)
 
-# 1. Limpieza específica basada en data_description.txt
-# Para estas variables, NA significa "Ausencia de la característica", no dato perdido.
+#######################################################################################################################################################################
+# EDA (se mantiene igual ya que no causa data leakage)
+#######################################################################################################################################################################
 
-df_clean <- df %>%
-  mutate(
-    # Variables donde NA = "None" o "No Access"
-    Alley = replace_na(Alley, "None"),             # [cite: 218]
-    BsmtQual = replace_na(BsmtQual, "None"),       # [cite: 234]
-    BsmtCond = replace_na(BsmtCond, "None"),       # [cite: 234]
-    BsmtExposure = replace_na(BsmtExposure, "None"),
-    BsmtFinType1 = replace_na(BsmtFinType1, "None"),
-    BsmtFinType2 = replace_na(BsmtFinType2, "None"),
-    FireplaceQu = replace_na(FireplaceQu, "None"), # [cite: 241]
-    GarageType = replace_na(GarageType, "None"),   # [cite: 242]
-    GarageFinish = replace_na(GarageFinish, "None"),
-    GarageQual = replace_na(GarageQual, "None"),
-    GarageCond = replace_na(GarageCond, "None"),
-    PoolQC = replace_na(PoolQC, "None"),           # [cite: 244]
-    Fence = replace_na(Fence, "None"),             # [cite: 245]
-    MiscFeature = replace_na(MiscFeature, "None"), # [cite: 245]
-    
-    # Variables numéricas donde NA implica 0 (ej. si no hay garaje, el área es 0)
-    GarageYrBlt = replace_na(GarageYrBlt, 0),
-    GarageArea = replace_na(GarageArea, 0),
-    GarageCars = replace_na(GarageCars, 0),
-    BsmtFinSF1 = replace_na(BsmtFinSF1, 0),
-    BsmtFinSF2 = replace_na(BsmtFinSF2, 0),
-    BsmtUnfSF = replace_na(BsmtUnfSF, 0),
-    TotalBsmtSF = replace_na(TotalBsmtSF, 0),
-    BsmtFullBath = replace_na(BsmtFullBath, 0),
-    BsmtHalfBath = replace_na(BsmtHalfBath, 0),
-    MasVnrArea = replace_na(MasVnrArea, 0)
-  )
+# Transformación Logarítmica de SalePrice (se mantiene ya que es solo transformación de variable objetivo)
+df$SalePrice_Log <- log(df$SalePrice)
 
-# Verificamos si quedan NAs "reales" (ej. LotFrontage suele tener NAs reales)
-colSums(is.na(df_clean))[colSums(is.na(df_clean)) > 0]
-
-# Análisis de SalePrice
-# 1. Histograma y curva de densidad
-ggplot(df_clean, aes(x = SalePrice)) +
+# Histograma de SalePrice
+ggplot(df, aes(x = SalePrice)) +
   geom_histogram(aes(y = ..density..), bins = 30, fill = "steelblue", alpha = 0.7) +
   geom_density(color = "red", linewidth = 1) +
   labs(title = "Distribución Original de SalePrice", x = "Precio ($)", y = "Densidad") +
   theme_minimal()
 
 # Calcular Skewness (Asimetría)
-cat("Asimetría original:", skewness(df_clean$SalePrice), "\n")
-# Nota: Si es > 1, está muy sesgada y justifica la transformación logarítmica.
+cat("Asimetría original:", skewness(df$SalePrice), "\n")
 
 # Seleccionar solo variables numéricas
-nums <- unlist(lapply(df_clean, is.numeric))
-df_nums <- df_clean[, nums]
+nums <- unlist(lapply(df, is.numeric))
+df_nums <- df[, nums]
 
 # Calcular matriz de correlación
 cor_matrix <- cor(df_nums, use = "complete.obs")
 
 # Filtrar para ver solo las que tienen alta correlación con SalePrice
-# Esto simplifica el gráfico y ayuda al informe
 high_cor_cols <- names(which(abs(cor_matrix[,"SalePrice"]) > 0.5)) # Umbral de 0.5
 cor_matrix_high <- cor_matrix[high_cor_cols, high_cor_cols]
 
@@ -91,261 +59,390 @@ corrplot(cor_matrix_high, method = "color",
          title = "Matriz de Correlación (Variables más influyentes)", 
          mar = c(0,0,1,0))
 
-
-# 1. Transformación Logarítmica de SalePrice
-# Usamos log() que en R es logaritmo natural.
-df_clean$SalePrice_Log <- log(df_clean$SalePrice)
-
 # Visualizar el cambio (Antes vs Después)
-p_before <- ggplot(df_clean, aes(x = SalePrice)) +
+p_before <- ggplot(df, aes(x = SalePrice)) +
   geom_density(fill = "red", alpha = 0.5) +
   labs(title = "Antes: Asimetría 1.88") + theme_minimal()
 
-p_after <- ggplot(df_clean, aes(x = SalePrice_Log)) +
+p_after <- ggplot(df, aes(x = SalePrice_Log)) +
   geom_density(fill = "green", alpha = 0.5) +
-  labs(title = paste("Después: Asimetría", round(skewness(df_clean$SalePrice_Log), 2))) +
+  labs(title = paste("Después: Asimetría", round(skewness(df$SalePrice_Log), 2))) +
   theme_minimal()
 
 grid.arrange(p_before, p_after, ncol = 2)
 
+# Vemos la distribución de Utilities
+ggplot(df, aes(x = Utilities)) +
+  geom_bar(fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "Frecuencias de Utilities", x = "Utilities", y = "Frecuencia")
 
-# 2. Imputación de LotFrontage basada en la mediana por vecindario
-df_clean <- df_clean %>%
-  group_by(Neighborhood) %>%
-  mutate(LotFrontage = ifelse(is.na(LotFrontage),
-                              median(LotFrontage, na.rm = TRUE),
-                              LotFrontage)) %>%
-  ungroup()
+# Gráficos de dispersión de variables numéricas clave vs SalePrice
+# GrLivArea
+p1 <- ggplot(df, aes(x = GrLivArea, y = SalePrice)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "GrLivArea vs SalePrice", x = "GrLivArea", y = "SalePrice")
 
-# 3. Imputación de restos menores (Electrical, MasVnrType) usando la Moda
-# A veces quedan 1 o 2 valores nulos sueltos
-get_mode <- function(v) {
-  uniqv <- unique(v)
-  uniqv[which.max(tabulate(match(v, uniqv)))]
+# OverallQual
+p2 <- ggplot(df, aes(x = factor(OverallQual), y = SalePrice)) +
+  geom_boxplot(fill = "lightgreen", alpha = 0.7) +
+  labs(title = "OverallQual vs SalePrice", x = "OverallQual", y = "SalePrice")
+
+grid.arrange(p1, p2, ncol = 2)
+
+#######################################################################################################################################################################
+# DIVISIÓN DE DATOS (PRIMERO, antes de cualquier preprocesamiento)
+#######################################################################################################################################################################
+
+set.seed(77)
+
+# Crear dataframe base para modelado
+df_base <- df %>%
+  select(-SalePrice) # Eliminamos SalePrice original, usaremos SalePrice_Log
+
+# 1. Crear índice para separar Train (60%) del resto (40%)
+trainIndex <- createDataPartition(df_base$SalePrice_Log, p = 0.6, list = FALSE)
+
+# Conjunto de Entrenamiento
+train_data <- df_base[trainIndex, ]
+
+# Datos restantes (para dividir luego en Val y Test)
+temp_data <- df_base[-trainIndex, ]
+
+# 2. Dividir los datos restantes (40%) en dos partes iguales (50% y 50%)
+valIndex <- createDataPartition(temp_data$SalePrice_Log, p = 0.5, list = FALSE)
+
+# Conjunto de Validación
+val_data <- temp_data[valIndex, ]
+
+# Conjunto de Test
+test_data <- temp_data[-valIndex, ]
+
+# Verificación de dimensiones
+cat("Dimensiones Train:", dim(train_data), "\n")
+cat("Dimensiones Validation:", dim(val_data), "\n")
+cat("Dimensiones Test:", dim(test_data), "\n")
+
+#######################################################################################################################################################################
+# FUNCIÓN PARA LIMPIEZA Y TRANSFORMACIÓN (se aplicará separadamente a cada conjunto)
+#######################################################################################################################################################################
+
+apply_preprocessing <- function(data) {
+  data_clean <- data %>%
+    mutate(
+      # Variables donde NA = "None" o "No Access"
+      Alley = replace_na(Alley, "None"),
+      BsmtQual = replace_na(BsmtQual, "None"),
+      BsmtCond = replace_na(BsmtCond, "None"),
+      BsmtExposure = replace_na(BsmtExposure, "None"),
+      BsmtFinType1 = replace_na(BsmtFinType1, "None"),
+      BsmtFinType2 = replace_na(BsmtFinType2, "None"),
+      FireplaceQu = replace_na(FireplaceQu, "None"),
+      GarageType = replace_na(GarageType, "None"),
+      GarageFinish = replace_na(GarageFinish, "None"),
+      GarageQual = replace_na(GarageQual, "None"),
+      GarageCond = replace_na(GarageCond, "None"),
+      PoolQC = replace_na(PoolQC, "None"),
+      Fence = replace_na(Fence, "None"),
+      MiscFeature = replace_na(MiscFeature, "None"),
+      
+      # Variables numéricas donde NA implica 0
+      GarageYrBlt = replace_na(GarageYrBlt, 0),
+      GarageArea = replace_na(GarageArea, 0),
+      GarageCars = replace_na(GarageCars, 0),
+      BsmtFinSF1 = replace_na(BsmtFinSF1, 0),
+      BsmtFinSF2 = replace_na(BsmtFinSF2, 0),
+      BsmtUnfSF = replace_na(BsmtUnfSF, 0),
+      TotalBsmtSF = replace_na(TotalBsmtSF, 0),
+      BsmtFullBath = replace_na(BsmtFullBath, 0),
+      BsmtHalfBath = replace_na(BsmtHalfBath, 0),
+      MasVnrArea = replace_na(MasVnrArea, 0)
+    )
+  
+  # Mapeo de las variables categóricas ordinales (usando mapeos fijos, no aprendidos de datos)
+  qual_map <- c("None" = 0, "Po" = 1, "Fa" = 2, "TA" = 3, "Gd" = 4, "Ex" = 5)
+  qual_cols <- c("ExterQual", "ExterCond", "BsmtQual", "BsmtCond", 
+                 "HeatingQC", "KitchenQual", "FireplaceQu", 
+                 "GarageQual", "GarageCond", "PoolQC")
+  
+  for(col in qual_cols){
+    data_clean[[col]] <- as.numeric(recode(data_clean[[col]], !!!qual_map))
+  }
+  
+  bsmt_fin_map <- c("None" = 0, "Unf" = 1, "LwQ" = 2, "Rec" = 3, "BLQ" = 4, "ALQ" = 5, "GLQ" = 6)
+  data_clean$BsmtFinType1 <- as.numeric(recode(data_clean$BsmtFinType1, !!!bsmt_fin_map))
+  data_clean$BsmtFinType2 <- as.numeric(recode(data_clean$BsmtFinType2, !!!bsmt_fin_map))
+  
+  func_map <- c("Sal" = 0, "Sev" = 1, "Maj2" = 2, "Maj1" = 3, "Mod" = 4, 
+                "Min2" = 5, "Min1" = 6, "Typ" = 7)
+  data_clean$Functional <- as.numeric(recode(data_clean$Functional, !!!func_map))
+  
+  return(data_clean)
 }
 
-df_clean$Electrical[is.na(df_clean$Electrical)] <- get_mode(df_clean$Electrical)
-df_clean$MasVnrType[is.na(df_clean$MasVnrType)] <- get_mode(df_clean$MasVnrType)
+# Aplicar preprocesamiento a cada conjunto
+train_clean <- apply_preprocessing(train_data)
+val_clean <- apply_preprocessing(val_data)
+test_clean <- apply_preprocessing(test_data)
 
-# Verificación final de NAs
-sum(is.na(df_clean)) # Debería ser 0
-
-
-# Función para mapear calidades a números
-qual_map <- c("None" = 0, "Po" = 1, "Fa" = 2, "TA" = 3, "Gd" = 4, "Ex" = 5)
-
-# Variables que comparten esta escala exacta
+# Verificar que se han convertido a numéricas
+cat("Verificación conversión numérica en train:\n")
 qual_cols <- c("ExterQual", "ExterCond", "BsmtQual", "BsmtCond", 
                "HeatingQC", "KitchenQual", "FireplaceQu", 
                "GarageQual", "GarageCond", "PoolQC")
+print(str(train_clean[, qual_cols]))
 
-# Aplicar el mapeo
-for(col in qual_cols){
-  df_clean[[col]] <- as.numeric(recode(df_clean[[col]], !!!qual_map))
-}
+#######################################################################################################################################################################
+# ONE-HOT ENCODING (ajustado solo con train y aplicado a todos los conjuntos)
+#######################################################################################################################################################################
 
-# También hay otras con escalas propias (ej. BsmtFinType1)
-# GLQ = Good Living Quarters (6) ... Unf = Unfinished (1)
-bsmt_fin_map <- c("None" = 0, "Unf" = 1, "LwQ" = 2, "Rec" = 3, "BLQ" = 4, "ALQ" = 5, "GLQ" = 6)
-df_clean$BsmtFinType1 <- as.numeric(recode(df_clean$BsmtFinType1, !!!bsmt_fin_map))
-df_clean$BsmtFinType2 <- as.numeric(recode(df_clean$BsmtFinType2, !!!bsmt_fin_map))
+# 1. Eliminamos variables que NO son predictoras
+train_modeling <- train_clean %>% select(-Id)
+val_modeling <- val_clean %>% select(-Id)
+test_modeling <- test_clean %>% select(-Id)
 
-# Functional (Home functionality)
-func_map <- c("Sal" = 0, "Sev" = 1, "Maj2" = 2, "Maj1" = 3, "Mod" = 4, 
-              "Min2" = 5, "Min1" = 6, "Typ" = 7)
-df_clean$Functional <- as.numeric(recode(df_clean$Functional, !!!func_map))
+# 2. One-Hot Encoding (Variables Dummy) - SOLO se ajusta con train
+dummies_conf <- dummyVars(SalePrice_Log ~ ., data = train_modeling)
 
-# Verificar que se han convertido a numéricas
-str(df_clean[, qual_cols])
+# Aplicamos la transformación a TODOS los conjuntos usando los parámetros aprendidos de train
+train_dummy <- predict(dummies_conf, newdata = train_modeling)
+val_dummy <- predict(dummies_conf, newdata = val_modeling)
+test_dummy <- predict(dummies_conf, newdata = test_modeling)
 
+# Convertir a dataframes y añadir variable objetivo
+train_dummy_df <- as.data.frame(train_dummy)
+train_dummy_df$SalePrice_Log <- train_modeling$SalePrice_Log
 
-# Eliminar columnas innecesarias
-# 'Id' no predice nada. 'Utilities' suele ser constante en este dataset (casi todas AllPub).
-df_model <- df_clean %>% select(-Id, -Utilities)
+val_dummy_df <- as.data.frame(val_dummy)
+val_dummy_df$SalePrice_Log <- val_modeling$SalePrice_Log
 
-# Crear variables Dummy para las categóricas restantes (Nominales)
-# Usamos dummyVars de caret, que gestiona esto muy bien
-dummies_model <- dummyVars(~ ., data = df_model)
-df_processed <- predict(dummies_model, newdata = df_model)
-df_processed <- as.data.frame(df_processed)
+test_dummy_df <- as.data.frame(test_dummy)
+test_dummy_df$SalePrice_Log <- test_modeling$SalePrice_Log
 
-# IMPORTANTE: Al crear dummies, la variable SalePrice y SalePrice_Log también están ahí.
-# Asegurémonos de que las dimensiones sean correctas.
-dim(df_processed)
+# 3. Limpieza de nombres de columnas
+names(train_dummy_df) <- make.names(names(train_dummy_df))
+names(val_dummy_df) <- make.names(names(val_dummy_df))
+names(test_dummy_df) <- make.names(names(test_dummy_df))
 
+# Verificamos el cambio drástico en dimensiones
+cat("Nuevas dimensiones para Train:", dim(train_dummy_df), "\n")
+cat("Nuevas dimensiones para Validation:", dim(val_dummy_df), "\n")
+cat("Nuevas dimensiones para Test:", dim(test_dummy_df), "\n")
 
-# Seleccionamos algunas de las variables más importantes que convertimos
-vars_to_check <- c("ExterQual", "KitchenQual", "BsmtQual", "HeatingQC")
+#######################################################################################################################################################################
+# IMPUTACIÓN, NORMALIZACIÓN (se mantiene igual pero con los nuevos conjuntos)
+#######################################################################################################################################################################
 
-# Creamos una lista de gráficos (Boxplots)
-plot_list <- list()
+# 1. Separar predictores y variable objetivo
+predictors_cols <- setdiff(names(train_dummy_df), "SalePrice_Log")
 
-for(var in vars_to_check){
-  # Corrección:
-  # 1. Usamos .data[[var]] para leer la columna cuyo nombre está en la variable 'var'
-  # 2. Quitamos las comillas de SalePrice_Log para que lea la columna numérica
-  
-  p <- ggplot(df_clean, aes(x = factor(.data[[var]]), y = SalePrice_Log)) +
-    geom_boxplot(fill = "lightblue", color = "darkblue", alpha = 0.7) +
-    labs(title = paste("Precio vs", var), x = "Calidad (1-5)", y = "Log(Precio)") +
-    theme_minimal()
-  
-  plot_list[[var]] <- p
-}
+# 2. Crear el objeto de preprocesamiento (SOLO con train_data)
+preprocessParams <- preProcess(train_dummy_df[, predictors_cols], 
+                               method = c("nzv", "medianImpute", "center", "scale"))
 
-# Visualizar en una cuadrícula 2x2
-grid.arrange(grobs = plot_list, ncol = 2)
+print(preprocessParams)
 
-# --- Validación Numérica (Correlación) ---
-# Verificamos qué tan fuerte es la relación lineal ahora que son números
-new_numeric_cors <- cor(df_clean[, vars_to_check], df_clean$SalePrice_Log, use = "complete.obs")
-print("Correlación de variables convertidas con SalePrice_Log:")
-print(new_numeric_cors)
+# 3. Aplicar transformaciones a Train, Val y Test usando parámetros de Train
+train_norm <- predict(preprocessParams, train_dummy_df[, predictors_cols])
+val_norm   <- predict(preprocessParams, val_dummy_df[, predictors_cols])
+test_norm  <- predict(preprocessParams, test_dummy_df[, predictors_cols])
 
+# 4. Volver a añadir la variable objetivo
+train_norm$SalePrice_Log <- train_dummy_df$SalePrice_Log
+val_norm$SalePrice_Log   <- val_dummy_df$SalePrice_Log
+test_norm$SalePrice_Log  <- test_dummy_df$SalePrice_Log
 
-# --- FASE 3: PREPARACIÓN PARA MODELOS ---
+# Verificación rápida
+cat("Media de GrLivArea (Train):", mean(train_norm$GrLivArea, na.rm = TRUE), "\n")
+cat("SD de GrLivArea (Train):", sd(train_norm$GrLivArea, na.rm = TRUE), "\n")
 
-# 1. Preparamos el dataset final
-# Nos aseguramos de tener solo variables numéricas (las dummies y las ordinales convertidas)
-# Excluimos 'SalePrice' y 'SalePrice_Log' de las predictoras (X)
-df_final <- df_processed
-target_log <- df_clean$SalePrice_Log # Guardamos el target transformado
+#######################################################################################################################################################################
+# PCA, LASSO, RIDGE (TODO ESTO SE MANTIENE IGUAL)
+#######################################################################################################################################################################
 
-# Comprobamos dimensiones
-dim(df_final)
-
-# 2. División Train / Test (80% Train - 20% Test)
-set.seed(123) # Semilla para reproducibilidad
-trainIndex <- createDataPartition(target_log, p = .8, 
-                                  list = FALSE, 
-                                  times = 1)
-
-# Creamos los dataframes de X (predictoras) e Y (target)
-X_train_raw <- df_final[ trainIndex, ] %>% select(-SalePrice, -SalePrice_Log)
-X_test_raw  <- df_final[-trainIndex, ] %>% select(-SalePrice, -SalePrice_Log)
-
-y_train <- target_log[trainIndex]
-y_test  <- target_log[-trainIndex]
-
-# 3. Estandarización (Scaling)
-# IMPORTANTE: "Aprendemos" la media y desviación SOLO del Train set
-preProcValues <- preProcess(X_train_raw, method = c("center", "scale"))
-
-# Aplicamos esa transformación a Train y a Test
-X_train_scaled <- predict(preProcValues, X_train_raw)
-X_test_scaled  <- predict(preProcValues, X_test_raw)
-
-# Verificación: La media de train debe ser 0 (o casi 0)
-# mean(X_train_scaled$GrLivArea) 
-
-# --- FASE 3.1: PCA (Análisis de Componentes Principales) ---
-
-# Calculamos PCA sobre los datos de entrenamiento escalados
-pca_model <- prcomp(X_train_scaled, center = FALSE, scale. = FALSE) 
-# (Ya escalamos antes, por eso ponemos FALSE aquí)
-
-# Resumen de varianza explicada
-pca_summary <- summary(pca_model)
-
-# VISUALIZACIÓN: Scree Plot (Varianza acumulada)
-# Esto nos ayuda a decidir cuántos componentes quedarnos
-var_explained <- pca_model$sdev^2 / sum(pca_model$sdev^2)
-cum_var <- cumsum(var_explained)
-
-# Creamos un dataframe para el gráfico
-pca_plot_df <- data.frame(
-  Component = 1:length(cum_var),
-  CumulativeVariance = cum_var
-)
-
-# Gráfico de codo (Scree Plot Acumulado)
-ggplot(pca_plot_df[1:100,], aes(x = Component, y = CumulativeVariance)) +
-  geom_line(color = "blue", size = 1) +
-  geom_point(size = 2) +
-  geom_hline(yintercept = 0.90, linetype = "dashed", color = "red") +
-  annotate("text", x = 0, y = 0.95, label = "90% Varianza", color = "red", hjust = -0.1) +
-  labs(title = "Varianza Explicada Acumulada por PCA", x = "Componentes", y = "Varianza") +
-  theme_minimal()
-
-# Ver cuántos componentes necesitamos para explicar el 90% o 95%
-num_comp_90 <- which(cum_var >= 0.90)[1]
-cat("Número de componentes para explicar el 90% de la varianza:", num_comp_90, "\n")
-
-# --- MODELO 1: OLS + PCA ---
-
-# 1. Preparamos los datos proyectados (Solo tomamos los primeros 122 componentes)
-k <- 122
-X_train_pca <- as.data.frame(pca_model$x[, 1:k])
-X_test_pca  <- as.data.frame(predict(pca_model, newdata = X_test_scaled)[, 1:k])
-
-# Añadimos la variable objetivo para entrenar el modelo lineal
-train_data_pca <- cbind(X_train_pca, SalePrice_Log = y_train)
-
-# 2. Entrenamos la Regresión Lineal
-model_pca_lm <- lm(SalePrice_Log ~ ., data = train_data_pca)
-
-# 3. Predecimos
-preds_pca <- predict(model_pca_lm, newdata = X_test_pca)
-
-# 4. Evaluamos (RMSE en escala logarítmica)
-rmse_pca <- RMSE(preds_pca, y_test)
-cat("RMSE Modelo PCA + Regresión Lineal:", rmse_pca, "\n")
-
+# Instalar librería glmnet si no está
+if(!require(glmnet)) install.packages("glmnet")
 library(glmnet)
 
-# glmnet necesita matrices, no dataframes
-X_train_mat <- as.matrix(X_train_scaled)
-X_test_mat  <- as.matrix(X_test_scaled)
+################################################################################
+# 1. GENERACIÓN DE COMPONENTES PRINCIPALES (PCA)
+################################################################################
 
-# --- MODELO 2: LASSO (Alpha = 1) ---
-set.seed(123)
-# cv.glmnet busca automáticamente el lambda óptimo
-lasso_cv <- cv.glmnet(X_train_mat, y_train, alpha = 1)
-best_lambda_lasso <- lasso_cv$lambda.min
+predictors_cols_norm <- setdiff(names(train_norm), "SalePrice_Log")
 
-# Predecir con el mejor lambda
-preds_lasso <- predict(lasso_cv, s = best_lambda_lasso, newx = X_test_mat)
-rmse_lasso <- RMSE(preds_lasso, y_test)
+cat("Número de predictores después del preprocesamiento:", length(predictors_cols_norm), "\n")
 
-cat("Mejor Lambda Lasso:", best_lambda_lasso, "\n")
-cat("RMSE Modelo Lasso:", rmse_lasso, "\n")
+# Calculamos PCA solo con el set de entrenamiento normalizado
+pca_obj <- prcomp(train_norm[, predictors_cols_norm], center = FALSE, scale. = FALSE)
 
+# --- INTERPRETACIÓN DE COMPONENTES PCA ---
+pca_importance <- summary(pca_obj)$importance
+cat("Varianza explicada por componentes:\n")
+print(pca_importance[, 1:10])
 
-# --- MODELO 3: RIDGE (Alpha = 0) ---
-set.seed(123)
-ridge_cv <- cv.glmnet(X_train_mat, y_train, alpha = 0)
-best_lambda_ridge <- ridge_cv$lambda.min
+# Loadings de los primeros 5 componentes
+pca_loadings <- pca_obj$rotation[, 1:5]
+cat("\nLoadings de los primeros 5 componentes (primeras 10 variables):\n")
+print(pca_loadings[1:10, ])
 
-# Predecir
-preds_ridge <- predict(ridge_cv, s = best_lambda_ridge, newx = X_test_mat)
-rmse_ridge <- RMSE(preds_ridge, y_test)
+# Decisión: Nos quedamos con los componentes que expliquen el 95% de la varianza
+cum_var <- cumsum(pca_obj$sdev^2 / sum(pca_obj$sdev^2))
+num_comp <- which(cum_var >= 0.95)[1]
+cat("Número de componentes para 95% varianza:", num_comp, "\n")
 
-cat("Mejor Lambda Ridge:", best_lambda_ridge, "\n")
-cat("RMSE Modelo Ridge:", rmse_ridge, "\n")
+# Proyectar los datos (Train, Val, Test) en el espacio de PCA
+train_pca <- data.frame(predict(pca_obj, train_norm[, predictors_cols_norm]))[, 1:num_comp]
+val_pca   <- data.frame(predict(pca_obj, val_norm[, predictors_cols_norm]))[, 1:num_comp]
+test_pca  <- data.frame(predict(pca_obj, test_norm[, predictors_cols_norm]))[, 1:num_comp]
 
-# --- MODELO 4: PCA + REGULARIZACIÓN (Lasso y Ridge sobre los Componentes) ---
+# Añadir la variable objetivo a los datasets de PCA
+train_pca$SalePrice_Log <- train_norm$SalePrice_Log
+val_pca$SalePrice_Log   <- val_norm$SalePrice_Log
+test_pca$SalePrice_Log  <- test_norm$SalePrice_Log
 
-# Convertimos los datos PCA a matriz (necesario para glmnet)
-# Recuerda: X_train_pca ya tiene las 122 columnas seleccionadas
-X_train_pca_mat <- as.matrix(X_train_pca)
-X_test_pca_mat  <- as.matrix(X_test_pca)
+################################################################################
+# 2. ENTRENAMIENTO DE MODELOS (TODO SE MANTIENE IGUAL)
+################################################################################
 
-# 4.1 PCA + LASSO
-set.seed(123)
-pca_lasso_cv <- cv.glmnet(X_train_pca_mat, y_train, alpha = 1)
-best_lambda_pca_lasso <- pca_lasso_cv$lambda.min
+# Configuración de control para el entrenamiento (Cross-Validation de 5 folds)
+ctrl <- trainControl(method = "cv", number = 5)
 
-preds_pca_lasso <- predict(pca_lasso_cv, s = best_lambda_pca_lasso, newx = X_test_pca_mat)
-rmse_pca_lasso <- RMSE(preds_pca_lasso, y_test)
+# --- MODELO 1: Regresión Lineal Múltiple sobre PCA (PCR) ---
+cat("Entrenando Modelo 1: Regresión Lineal sobre PCA...\n")
+model_pca_lm <- train(SalePrice_Log ~ ., 
+                      data = train_pca, 
+                      method = "lm", 
+                      trControl = ctrl)
 
-cat("RMSE Modelo PCA + Lasso:", rmse_pca_lasso, "\n")
+# --- MODELO 2: Lasso (Sobre datos originales normalizados) ---
+cat("Entrenando Modelo 2: Lasso (Original)...\n")
+lambda_grid <- 10^seq(-3, 1, length = 100)
 
-# 4.2 PCA + RIDGE
-set.seed(123)
-pca_ridge_cv <- cv.glmnet(X_train_pca_mat, y_train, alpha = 0)
-best_lambda_pca_ridge <- pca_ridge_cv$lambda.min
+model_lasso <- train(SalePrice_Log ~ ., 
+                     data = train_norm, 
+                     method = "glmnet",
+                     trControl = ctrl,
+                     tuneGrid = expand.grid(alpha = 1, lambda = lambda_grid))
 
-preds_pca_ridge <- predict(pca_ridge_cv, s = best_lambda_pca_ridge, newx = X_test_pca_mat)
-rmse_pca_ridge <- RMSE(preds_pca_ridge, y_test)
+# --- MODELO 3: Ridge (Sobre datos originales normalizados) ---
+cat("Entrenando Modelo 3: Ridge (Original)...\n")
+model_ridge <- train(SalePrice_Log ~ ., 
+                     data = train_norm, 
+                     method = "glmnet",
+                     trControl = ctrl,
+                     tuneGrid = expand.grid(alpha = 0, lambda = lambda_grid))
 
-cat("RMSE Modelo PCA + Ridge:", rmse_pca_ridge, "\n")
+# --- MODELO 4a: Lasso sobre PCA ---
+cat("Entrenando Modelo 4a: Lasso sobre PCA...\n")
+model_pca_lasso <- train(SalePrice_Log ~ ., 
+                         data = train_pca, 
+                         method = "glmnet", 
+                         trControl = ctrl,
+                         tuneGrid = expand.grid(alpha = 1, lambda = lambda_grid))
+
+# --- MODELO 4b: Ridge sobre PCA ---
+cat("Entrenando Modelo 4b: Ridge sobre PCA...\n")
+model_pca_ridge <- train(SalePrice_Log ~ ., 
+                         data = train_pca, 
+                         method = "glmnet", 
+                         trControl = ctrl,
+                         tuneGrid = expand.grid(alpha = 0, lambda = lambda_grid))
+
+################################################################################
+# 3. EVALUACIÓN Y COMPARACIÓN (Sobre conjunto de Validación)
+################################################################################
+
+# Función auxiliar para calcular métricas
+calc_metrics <- function(model, data, actual) {
+  preds <- predict(model, newdata = data)
+  rmse_val <- RMSE(preds, actual)
+  mae_val <- MAE(preds, actual)
+  r2_val <- R2(preds, actual)
+  return(c(RMSE = rmse_val, MAE = mae_val, R2 = r2_val))
+}
+
+# Evaluar todos los modelos
+results <- rbind(
+  PCA_Linear = calc_metrics(model_pca_lm, val_pca, val_pca$SalePrice_Log),
+  Lasso_Original = calc_metrics(model_lasso, val_norm, val_norm$SalePrice_Log),
+  Ridge_Original = calc_metrics(model_ridge, val_norm, val_norm$SalePrice_Log),
+  Lasso_PCA = calc_metrics(model_pca_lasso, val_pca, val_pca$SalePrice_Log),
+  Ridge_PCA = calc_metrics(model_pca_ridge, val_pca, val_pca$SalePrice_Log)
+)
+
+# Convertir a Dataframe para visualizar mejor
+results_df <- as.data.frame(results)
+results_df <- results_df[order(results_df$RMSE), ]
+
+print("Resultados de la Evaluación (Validación):")
+print(results_df)
+
+# Gráfico comparativo de RMSE
+results_df$Model <- rownames(results_df)
+ggplot(results_df, aes(x = reorder(Model, RMSE), y = RMSE, fill = Model)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Comparación de Modelos (RMSE)", x = "Modelo", y = "RMSE (Menor es mejor)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+################################################################################
+# 4. SELECCIÓN DEL MEJOR MODELO Y PREDICCIÓN FINAL (Test)
+################################################################################
+
+# Identificar el mejor modelo (menor RMSE)
+best_model_name <- rownames(results_df)[1]
+cat("El mejor modelo es:", best_model_name, "\n")
+
+# Seleccionar el objeto del modelo correspondiente para usar en Test
+if(best_model_name == "PCA_Linear") best_model <- model_pca_lm
+if(best_model_name == "Lasso_Original") best_model <- model_lasso
+if(best_model_name == "Ridge_Original") best_model <- model_ridge
+if(best_model_name == "Lasso_PCA") best_model <- model_pca_lasso
+if(best_model_name == "Ridge_PCA") best_model <- model_pca_ridge
+
+# Evaluar en Test (Datos que el modelo NUNCA ha visto)
+if(grepl("PCA", best_model_name)) {
+  test_set_final <- test_pca
+} else {
+  test_set_final <- test_norm
+}
+
+final_preds <- predict(best_model, newdata = test_set_final)
+final_rmse <- RMSE(final_preds, test_set_final$SalePrice_Log)
+final_mae <- MAE(final_preds, test_set_final$SalePrice_Log)
+
+cat("\n--- RESULTADOS FINALES EN TEST ---\n")
+cat("Modelo seleccionado:", best_model_name, "\n")
+cat("RMSE Final (Test):", final_rmse, "\n")
+cat("MAE Final (Test):", final_mae, "\n")
+
+# Convertir predicciones y valores reales a dólares
+test_pred_dollars <- exp(final_preds)
+actual_dollars <- exp(test_set_final$SalePrice_Log)
+
+# Calcular RMSE y MAE en dólares
+RMSE_dollars <- RMSE(test_pred_dollars, actual_dollars)
+MAE_dollars <- MAE(test_pred_dollars, actual_dollars)
+
+cat("RMSE en dólares (Test):", RMSE_dollars, "\n")
+cat("MAE en dólares (Test):", MAE_dollars, "\n")
+
+# --- ANÁLISIS DE RESIDUOS ---
+residuals <- actual_dollars - test_pred_dollars
+
+# Gráfico de residuos vs predicciones
+ggplot() + 
+  geom_point(aes(x = test_pred_dollars, y = residuals), alpha = 0.6) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(x = "Predicciones (dólares)", y = "Residuos (dólares)", 
+       title = "Residuos vs Predicciones (escala original)") +
+  theme_minimal()
+
+# Histograma de residuos
+ggplot() + 
+  geom_histogram(aes(x = residuals), bins = 30, fill = "steelblue", alpha = 0.7) +
+  labs(x = "Residuos (dólares)", y = "Frecuencia", 
+       title = "Distribución de Residuos") +
+  theme_minimal()

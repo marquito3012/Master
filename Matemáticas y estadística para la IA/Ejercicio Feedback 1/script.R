@@ -185,6 +185,27 @@ p2 <- ggplot(df_clean, aes(x = factor(OverallQual), y = SalePrice)) +
 grid.arrange(p1, p2, ncol = 2)
 
 ################################################################################
+# TRATAMIENTO DE OUTLIERS (Añadir en fase EDA)
+################################################################################
+
+# 1. Visualización para identificar outliers
+# En tu gráfico p1 (GrLivArea vs SalePrice) verás 2 puntos a la derecha (área > 4000)
+# con precio muy bajo. Estos son outliers que dañan la regresión lineal.
+grid.arrange(p1, ncol = 1) 
+
+# 2. Filtrado manual basado en EDA
+# Eliminamos casas con más de 4000 pies cuadrados de superficie habitable 
+# pero que valen menos de 300.000$ (son anomalías claras)
+dim_antes <- dim(df_clean)
+
+df_clean <- df_clean %>%
+  filter(!(GrLivArea > 4000 & SalePrice < 300000))
+
+dim_despues <- dim(df_clean)
+
+cat("Se han eliminado", dim_antes[1] - dim_despues[1], "outliers detectados visualmente en EDA.\n")
+
+################################################################################
 # División de datos y preparación para el modelo (SOLO NUMÉRICAS)
 ################################################################################
 

@@ -5,6 +5,7 @@ if(!require(caret)) install.packages("caret")
 if(!require(moments)) install.packages("moments")
 if(!require(gridExtra)) install.packages("gridExtra")
 if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(glmnet)) install.packages("glmnet")
 
 # Cargar librerías
 library(tidyverse)
@@ -13,6 +14,7 @@ library(caret)
 library(moments)
 library(gridExtra)
 library(ggplot2)
+library(glmnet)
 
 # Cargar datos
 df <- read.csv("/home/marco/Master/Matemáticas y estadística para la IA/Ejercicio Feedback 1/train.csv", stringsAsFactors = FALSE)
@@ -26,7 +28,7 @@ dim(df)
 # Transformación de los NA no Nulos
 df_clean <- df %>%
   mutate(
-    # Variables donde NA = "None" o "No Access"
+    # Variables donde NA = "None" o "No Aplica"
     Alley = replace_na(Alley, "None"),
     BsmtQual = replace_na(BsmtQual, "None"),
     BsmtCond = replace_na(BsmtCond, "None"),
@@ -42,7 +44,7 @@ df_clean <- df %>%
     Fence = replace_na(Fence, "None"),
     MiscFeature = replace_na(MiscFeature, "None"),
     
-    # Variables numéricas donde NA implica 0 (ej. si no hay garaje, el área es 0)
+    # Variables numéricas donde NA implica 0
     GarageYrBlt = replace_na(GarageYrBlt, 0),
     GarageArea = replace_na(GarageArea, 0),
     GarageCars = replace_na(GarageCars, 0),
@@ -62,7 +64,7 @@ colSums(is.na(df_clean))[colSums(is.na(df_clean)) > 0]
 # Función para mapear calidades a números
 qual_map <- c("None" = 0, "Po" = 1, "Fa" = 2, "TA" = 3, "Gd" = 4, "Ex" = 5)
 
-# Variables que comparten esta escala exacta
+# Variables que comparten esta escala
 qual_cols <- c("ExterQual", "ExterCond", "BsmtQual", "BsmtCond", 
                "HeatingQC", "KitchenQual", "FireplaceQu", 
                "GarageQual", "GarageCond", "PoolQC")
@@ -72,13 +74,12 @@ for(col in qual_cols){
   df_clean[[col]] <- as.numeric(recode(df_clean[[col]], !!!qual_map))
 }
 
-# También hay otras con escalas propias (ej. BsmtFinType1)
-# GLQ = Good Living Quarters (6) ... Unf = Unfinished (1)
+# Mapeo para BsmtFinType 1 y 2
 bsmt_fin_map <- c("None" = 0, "Unf" = 1, "LwQ" = 2, "Rec" = 3, "BLQ" = 4, "ALQ" = 5, "GLQ" = 6)
 df_clean$BsmtFinType1 <- as.numeric(recode(df_clean$BsmtFinType1, !!!bsmt_fin_map))
 df_clean$BsmtFinType2 <- as.numeric(recode(df_clean$BsmtFinType2, !!!bsmt_fin_map))
 
-# Functional (Home functionality)
+# Mapeo de Functional
 func_map <- c("Sal" = 0, "Sev" = 1, "Maj2" = 2, "Maj1" = 3, "Mod" = 4, 
               "Min2" = 5, "Min1" = 6, "Typ" = 7)
 df_clean$Functional <- as.numeric(recode(df_clean$Functional, !!!func_map))
@@ -142,7 +143,7 @@ ggplot(df_clean, aes(x = Utilities)) +
   theme_minimal() +
   labs(title = "Frecuencias de Utilities", x = "Utilities", y = "Frecuencia")
 
-# Seleccionamos variables categóricas ordinales que hemos transformado a numéricas
+# Seleccionamos variables categóricas ordinales que hemos mapeado a numéricas
 vars_to_check <- c("ExterQual", "ExterCond", "BsmtQual", "BsmtCond", 
                    "HeatingQC", "KitchenQual", "FireplaceQu", "GarageQual", 
                    "GarageCond", "PoolQC", "BsmtFinType1", "BsmtFinType2", "Functional")
@@ -170,28 +171,14 @@ for(var in high_cor_cols_ord){
 
 grid.arrange(grobs = plot_list, ncol = 2)
 
-# Gráficos de dispersión de variables numéricas clave vs SalePrice
+################################################################################
+# TRATAMIENTO DE OUTLIERS
+################################################################################
 # GrLivArea
-p1 <- ggplot(df_clean, aes(x = GrLivArea, y = SalePrice)) +
+ggplot(df_clean, aes(x = GrLivArea, y = SalePrice)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = "lm", color = "red") +
   labs(title = "GrLivArea vs SalePrice", x = "GrLivArea", y = "SalePrice")
-
-# OverallQual
-p2 <- ggplot(df_clean, aes(x = factor(OverallQual), y = SalePrice)) +
-  geom_boxplot(fill = "lightgreen", alpha = 0.7) +
-  labs(title = "OverallQual vs SalePrice", x = "OverallQual", y = "SalePrice")
-
-grid.arrange(p1, p2, ncol = 2)
-
-################################################################################
-# TRATAMIENTO DE OUTLIERS (Añadir en fase EDA)
-################################################################################
-
-# 1. Visualización para identificar outliers
-# En tu gráfico p1 (GrLivArea vs SalePrice) verás 2 puntos a la derecha (área > 4000)
-# con precio muy bajo. Estos son outliers que dañan la regresión lineal.
-grid.arrange(p1, ncol = 1) 
 
 # 2. Filtrado manual basado en EDA
 # Eliminamos casas con más de 4000 pies cuadrados de superficie habitable 
@@ -210,10 +197,6 @@ cat("Se han eliminado", dim_antes[1] - dim_despues[1], "outliers detectados visu
 ################################################################################
 
 # 1. Identificar variables numéricas
-# Esto seleccionará automáticamente:
-# - Las numéricas originales (LotArea, YearBuilt...)
-# - Las ordinales que convertiste manualmente a números (ExterQual, BsmtQual...)
-# - Y la variable objetivo transformada (SalePrice_Log)
 nums <- unlist(lapply(df_clean, is.numeric))
 df_numeric_only <- df_clean[, nums]
 
@@ -223,13 +206,9 @@ df_model <- df_numeric_only %>%
   select(-Id, -SalePrice)
 
 # Verificamos las dimensiones
-# Ahora deberías tener muchas menos columnas que antes (alrededor de 40-50),
-# pero todas son puramente numéricas.
 cat("Nuevas dimensiones para el modelo (Solo numéricas):", dim(df_model), "\n")
 
-# NOTA: A partir de aquí, el resto del script (split, preProcess, PCA, modelos) 
-# funcionará EXACTAMENTE igual, ya que 'df_model' tiene el formato correcto.
-
+# Elegimos la semilla para la reproducibilidad del código
 set.seed(77)
 
 # 1. Crear índice para separar Train (60%) del resto (40%)
@@ -256,18 +235,16 @@ cat("Dimensiones Validation:", dim(val_data), "\n")
 cat("Dimensiones Test:", dim(test_data), "\n")
 
 #######################################################################################################################################################################
-# Imputación, normalización
+# Imputación y normalización
 #######################################################################################################################################################################
 
 # 1. Separar predictores y variable objetivo
-# No queremos normalizar 'SalePrice_Log', solo las variables predictoras
 predictors_cols <- setdiff(names(train_data), "SalePrice_Log")
 
 # 2. Crear el objeto de preprocesamiento (SOLO con train_data)
-# Nota: 'nzv' elimina variables dummy que son casi constantes
-# 'medianImpute' rellena NAs restantes (si quedaron tras tu limpieza manual)
-preprocessParams <- preProcess(train_data[, predictors_cols], 
-                               method = c("nzv", "medianImpute", "center", "scale"))
+# 'nzv' elimina variables dummy que son casi constantes
+# 'medianImpute' rellena NAs restantes
+preprocessParams <- preProcess(train_data[, predictors_cols], method = c("nzv", "medianImpute", "center", "scale"))
 
 print(preprocessParams)
 
@@ -282,18 +259,13 @@ val_norm$SalePrice_Log   <- val_data$SalePrice_Log
 test_norm$SalePrice_Log  <- test_data$SalePrice_Log
 
 # Verificación rápida
-# Las medias de las variables numéricas en train_norm deberían ser cercanas a 0
-# y la desviación estándar cercana a 1.
+# Las medias de las variables numéricas en train_norm deberían ser cercanas a 0 y la desviación estándar cercana a 1.
 cat("Media de GrLivArea (Train):", mean(train_norm$GrLivArea), "\n")
 cat("SD de GrLivArea (Train):", sd(train_norm$GrLivArea), "\n")
 
 #######################################################################################################################################################################
 # PCA, Lasso, Ridge y regresión Lasso y Ridge aplicadas sobre los componentes principales extraídos por PCA
 #######################################################################################################################################################################
-
-# Instalar librería glmnet si no está (necesaria para Lasso/Ridge)
-if(!require(glmnet)) install.packages("glmnet")
-library(glmnet)
 
 ################################################################################
 # 1. GENERACIÓN DE COMPONENTES PRINCIPALES (PCA)
@@ -317,10 +289,7 @@ pca_loadings <- pca_obj$rotation[, 1:5]
 cat("\nLoadings de los primeros 5 componentes (primeras 10 variables):\n")
 print(pca_loadings[1:10, ])
 
-# Análisis de varianza explicada (Opcional: para decidir cuántos componentes usar)
-# fviz_eig(pca_obj, addlabels = TRUE) # Requiere factoextra
-
-# Decisión: Nos quedamos con los componentes que expliquen el 95% de la varianza
+# Nos quedamos con los componentes que expliquen el 95% de la varianza
 cum_var <- cumsum(pca_obj$sdev^2 / sum(pca_obj$sdev^2))
 num_comp <- which(cum_var >= 0.95)[1]
 cat("Número de componentes para 95% varianza:", num_comp, "\n")
